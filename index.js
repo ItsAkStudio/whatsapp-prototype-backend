@@ -4,14 +4,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Replace with your actual Gupshup API Key
-const GUPSHUP_API_KEY = 'sk_a339e57ceb834ef3ad5e7d2c6dbda214';
+const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY;
 
 // Middleware
 app.use(express.json());
 
 // Health check
 app.get('/', (req, res) => {
-  res.send('Backend is running!');
+  res.send('Welcome Your Backed is Running');
 });
 
 // Order endpoint
@@ -24,11 +24,11 @@ app.post('/api/whatsapp/order', async (req, res) => {
     const response = await axios.post('https://api.gupshup.io/sm/api/v1/msg', null, {
       params: {
         channel: 'whatsapp',
-        source: '917834811114', // From Gupshup App
+        source: '917834811114',
         destination: phoneNumber,
         message: message,
-        src.name: 'WhatsappCommerceOSv1',
-      },
+        'src.name': 'WhatsappCommerceOSv1'
+      }
       headers: {
         'apikey': GUPSHUP_API_KEY,
         'Content-Type': 'application/x-www-form-urlencoded'
