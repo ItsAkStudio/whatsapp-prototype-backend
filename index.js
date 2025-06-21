@@ -1,15 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
-const { OpenAI } = require('openai');
+// const { OpenAI } = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // OpenAI setup
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY,
+// });
 
 // Gupshup setup from env
 const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY;
@@ -96,18 +96,50 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// 🧠 Generate AI reply using ChatGPT
-async function generateAIReply(message) {
-  const chat = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [
-      { role: "system", content: "You're a helpful WhatsApp shopping assistant for an e-commerce store. Guide users to checkout, answer queries, and assist politely." },
-      { role: "user", content: message }
-    ],
-  });
-  return chat.choices[0].message.content;
-}
+// // 🧠 Generate AI reply using ChatGPT
+// async function generateAIReply(message) {
+//   const chat = await openai.chat.completions.create({
+//     model: "gpt-3.5-turbo",
+//     messages: [
+//       { role: "system", content: "You're a helpful WhatsApp shopping assistant for an e-commerce store. Guide users to checkout, answer queries, and assist politely." },
+//       { role: "user", content: message }
+//     ],
+//   });
+//   return chat.choices[0].message.content;
+// }
 
+// // 🚀 Start server
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+// });
+async function generateAIReply(message) {
+  const response = await axios.post(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      model: 'mistralai/mistral-7b-instruct',
+      messages: [
+        {
+          role: 'system',
+          content: "You're a helpful WhatsApp shopping assistant for an e-commerce store. Guide users through checkout, ask for address, offer payment modes like UPI/COD, and provide support politely."
+        },
+        {
+          role: 'user',
+          content: message
+        }
+      ]
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://yourdomain.com',
+        'X-Title': 'WhatsappCommerceOS'
+      }
+    }
+  );
+
+  return response.data.choices[0].message.content;
+}
 // 🚀 Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
