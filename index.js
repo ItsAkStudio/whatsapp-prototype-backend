@@ -20,23 +20,26 @@ app.post('/api/whatsapp/order', async (req, res) => {
 
     const message = `🛒 Hello ${name}, thanks for your order! We’ll get it to you soon.\nOrder Details: ${orderDetails}`;
 
-    const response = await axios.post(
-      'https://api.gupshup.io/sm/api/v1/msg',
-      null,
-      {
-        params: {
-          channel: 'whatsapp',
-          source: '917834811114', // Your Gupshup sender number
-          destination: phoneNumber,
-          message: message,
-          'src.name': 'WhatsappCommerceOSv1'
-        },
-        headers: {
-          apikey: GUPSHUP_API_KEY,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+    const response = await axios.post('https://api.gupshup.io/sm/api/v1/msg', null, {
+      params: {
+        channel: 'whatsapp',
+        source: '917834811114', // Your Gupshup sandbox number
+        destination: phoneNumber, // Customer number
+        message: `🛍️ Thanks for your interest! 
+Product: Retinol Night Cream
+Qty: 1
+Total: ₹499
+Pay here: https://pay.test/ORD123
+
+Reply to confirm your order. 😊`,
+        'src.name': 'WhatsappCommerceOSv1'
+      },
+      headers: {
+        apikey: GUPSHUP_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
       }
-    );
+    });
+
 
     console.log('Message API response:', response.data);
     res.json({ success: true, message: 'WhatsApp message sent!' });
