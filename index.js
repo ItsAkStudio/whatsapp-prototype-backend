@@ -6,94 +6,105 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ENV Variables
-const AISENSY_API_KEY = process.env.AISENSY_API_KEY;
-const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER;
+// Load Environment Variables
+const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY;
+const WHATSAPP_SOURCE = process.env.WHATSAPP_SOURCE;
+const BOT_NAME = process.env.BOT_NAME || 'WhatsappCommerceAI';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-if (!AISENSY_API_KEY || !WHATSAPP_NUMBER || !OPENROUTER_API_KEY) {
+if (!GUPSHUP_API_KEY || !WHATSAPP_SOURCE || !OPENROUTER_API_KEY) {
   throw new Error('❌ Missing environment variables');
 }
 
 app.use(express.json());
 
-// Simple in-memory session store
+// In-memory session to track conversation context
 const sessions = new Map();
 
-app.get('/', (_, res) => res.send('✅ AiSensy + AI WhatsApp backend is live!'));
+// Format AI response for WhatsApp (within 4096 characters)
+const formatMessage = (text) => text.trim().replace(/\n{2,}/g, '\n').substring(0, 4096);
 
-// Send initial order message
+// ✅ Health check endpoint
+app.get('/', (req, res) => {
+  res.send('✅ WhatsApp AI Backend is live');
+});
+
+// 🛒 Handle new order from frontend (on Buy via WhatsApp click)
 app.post('/api/whatsapp/order', async (req, res) => {
   try {
     const { phoneNumber, name, orderDetails } = req.body;
 
+    if (!phoneNumber || !orderDetails) {
+      return res.status(400).json({ success: false, message: 'Missing phoneNumber or orderDetails' });
+    }
+
     const sessionId = phoneNumber;
-    const message = `User ${name || "Guest"} wants to order: ${orderDetails}. Greet, ask for delivery address, and show payment options.`;
-
     if (!sessions.has(sessionId)) sessions.set(sessionId, []);
-    const history = sessions.get(sessionId);
-    history.push({ role: 'user', content: message });
 
-    const aiResponse = await generateAIReply(history);
-    await sendViaAiSensy(phoneNumber, aiResponse);
-    history.push({ role: 'assistant', content: aiResponse });
+    const conversation = sessions.get(sessionId);
+    const introMsg = `A user named ${name || "Guest"} is interested in: ${orderDetails}. Ask for their delivery address and offer payment options (UPI, COD).`;
 
-    res.json({ success: true, message: 'AI-driven WhatsApp message sent!' });
-  } catch (err) {
-    console.error('❌ Order error:', err.message);
-    res.status(500).json({ success: false, message: 'Message send failed' });
+    conversation.push({ role: 'user', content: introMsg });
+
+    const aiReply = await generateAIReply(conversation);
+
+    await sendWhatsAppMessage(phoneNumber, aiReply);
+    conversation.push({ role: 'assistant', content: aiReply });
+
+    console.log(`✅ Sent AI reply to ${phoneNumber}: ${aiReply.slice(0, 80)}...`);
+    res.json({ success: true, message: 'AI message sent via WhatsApp' });
+
+  } catch (error) {
+    console.error('❌ Order Error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to send WhatsApp message' });
   }
 });
 
-// Incoming replies
-app.post('/webhook', async (req, res) => {
-  const { phone, message } = req.body;
+// 🔁 Webhook to handle replies from users
+app.post('/webhook', rateLimit({ windowMs: 60_000, max: 100 }), async (req, res) => {
+  const payload = req.body;
 
-  if (!phone || !message) return res.sendStatus(200);
-  const sessionId = phone;
+  if (payload?.type !== 'message') return res.sendStatus(200);
 
-  if (!sessions.has(sessionId)) sessions.set(sessionId, []);
-  const history = sessions.get(sessionId);
-  history.push({ role: 'user', content: message });
+  const message = payload.payload?.payload?.text;
+  const sender = payload.payload?.sender?.phone;
+
+  if (!message || !sender) {
+    console.warn('⚠️ Missing message or sender info');
+    return res.sendStatus(200);
+  }
 
   try {
-    const aiReply = await generateAIReply(history);
-    await sendViaAiSensy(phone, aiReply);
-    history.push({ role: 'assistant', content: aiReply });
+    const session = sessions.get(sender) || [];
+    session.push({ role: 'user', content: message });
+    sessions.set(sender, session);
+
+    const aiReply = await generateAIReply(session);
+    session.push({ role: 'assistant', content: aiReply });
+
+    await sendWhatsAppMessage(sender, aiReply);
+    console.log(`💬 Replied to ${sender}: ${aiReply.slice(0, 80)}...`);
 
     res.sendStatus(200);
   } catch (err) {
-    console.error('❌ Webhook reply error:', err.message);
+    console.error("❌ Webhook Error:", err.message);
     res.sendStatus(500);
   }
 });
 
-// Send message via AiSensy
-async function sendViaAiSensy(destination, message) {
-  const payload = {
-    to: destination,
-    type: "text",
-    text: { body: message }
-  };
-
-  await axios.post('https://backend.aisensy.com/campaign/message', payload, {
-    headers: {
-      Authorization: `Bearer ${AISENSY_API_KEY}`,
-      'Content-Type': 'application/json'
-    }
-  });
-}
-
-// AI Reply
-async function generateAIReply(history) {
-  const recentHistory = history.slice(-3);
+// 🔧 Generate AI reply from OpenRouter (Mistral/DeepSeek model)
+async function generateAIReply(messages) {
+  const recentMessages = messages.slice(-3); // keep context short for cost
   const response = await axios.post(
     'https://openrouter.ai/api/v1/chat/completions',
     {
       model: 'mistralai/mistral-7b-instruct',
       messages: [
-        { role: 'system', content: "You're a helpful shopping assistant on WhatsApp for an e-commerce brand." },
-        ...recentHistory
+        {
+          role: 'system',
+          content: "You're a helpful WhatsApp shopping assistant. Guide users, ask for address, offer UPI/COD, and provide polite support."
+        },
+        ...recentMessages
       ],
       max_tokens: 200
     },
@@ -107,10 +118,30 @@ async function generateAIReply(history) {
     }
   );
 
-  return response.data.choices[0].message.content.trim();
+  return formatMessage(response.data.choices[0].message.content);
 }
 
-// Start server
+// 📤 Send message to customer via Gupshup
+async function sendWhatsAppMessage(destination, message) {
+  await axios.post(
+    'https://api.gupshup.io/sm/api/v1/msg',
+    new URLSearchParams({
+      channel: 'whatsapp',
+      source: WHATSAPP_SOURCE,
+      destination,
+      message,
+      'src.name': BOT_NAME
+    }),
+    {
+      headers: {
+        apikey: GUPSHUP_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    }
+  );
+}
+
+// 🚀 Start server
 app.listen(PORT, () => {
-  console.log(`🚀 AiSensy + AI Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
