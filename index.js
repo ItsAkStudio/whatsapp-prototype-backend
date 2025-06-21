@@ -306,3 +306,9 @@ async function generateAIReply(conversationHistory) {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
+app.post('/test-ai', async (req, res) => {
+  const { message } = req.body;
+  const aiReply = await generateAIReply([{ role: 'user', content: message }]);
+  res.json({ aiReply });
+});
