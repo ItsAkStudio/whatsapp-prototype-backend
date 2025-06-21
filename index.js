@@ -186,36 +186,44 @@ Greet them, ask for delivery address, and suggest payment options like UPI, COD,
 
 // 🔁 Webhook (Gupshup sends incoming user replies here)
 app.post('/webhook', async (req, res) => {
+  const payload = req.body;
+
+  // Basic safety check
+  if (!payload || !payload.type || payload.type !== 'message') {
+    return res.sendStatus(200);
+  }
+
+  const incomingMessage = payload.payload?.payload?.text || '';
+  const senderPhone = payload.payload?.sender?.phone;
+
+  if (!senderPhone || !incomingMessage) {
+    console.log("Missing phone or message");
+    return res.sendStatus(200);
+  }
+
+  // Generate AI reply
+  const aiReply = await generateAIReply(incomingMessage);
+
+  // Send reply via Gupshup
   try {
-    const incoming = req.body;
-
-    const phoneNumber = incoming.payload?.source;
-    const userText = incoming.payload?.payload?.payload?.text;
-
-    if (!phoneNumber || !userText) {
-      return res.status(400).json({ success: false, message: 'Invalid webhook data.' });
-    }
-
-    const aiResponse = await generateAIReply(userText);
-
     await axios.post('https://api.gupshup.io/sm/api/v1/msg', null, {
       params: {
         channel: 'whatsapp',
         source: WHATSAPP_SOURCE,
-        destination: phoneNumber,
-        message: aiResponse,
-        'src.name': BOT_NAME,
+        destination: senderPhone,
+        message: aiReply,
+        'src.name': BOT_NAME
       },
       headers: {
-        apikey: GUPSHUP_API_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+        'apikey': GUPSHUP_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
 
-    console.log('🤖 AI replied to user:', userText, '→', aiResponse);
+    console.log(`Replied to ${senderPhone}: ${aiReply}`);
     res.sendStatus(200);
-  } catch (error) {
-    console.error('❌ Webhook handler error:', error.message);
+  } catch (err) {
+    console.error("Failed to send reply:", err.message);
     res.sendStatus(500);
   }
 });
@@ -229,7 +237,6 @@ async function generateAIReply(message) {
       { role: "user", content: message }
     ],
   });
-
   return chat.choices[0].message.content;
 }
 
