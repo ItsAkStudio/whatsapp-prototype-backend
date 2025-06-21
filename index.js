@@ -145,3 +145,35 @@ async function sendWhatsAppMessage(destination, message) {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
+
+// new test 
+app.post('/test-gupshup', async (req, res) => {
+  try {
+    const phoneNumber = req.body.phoneNumber;
+
+    const msg = "🧪 Test message from backend. If you see this, Gupshup setup is correct.";
+
+    await axios.post(
+      'https://api.gupshup.io/sm/api/v1/msg',
+      new URLSearchParams({
+        channel: 'whatsapp',
+        source: process.env.WHATSAPP_SOURCE,
+        destination: phoneNumber,
+        message: msg,
+        'src.name': process.env.BOT_NAME || 'WhatsappCommerceOSv1'
+      }),
+      {
+        headers: {
+          apikey: process.env.GUPSHUP_API_KEY,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    res.json({ success: true, message: 'Test message sent!' });
+  } catch (err) {
+    console.error('❌ Gupshup Test Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to send Gupshup test message' });
+  }
+});
