@@ -2,17 +2,22 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
+const Razorpay = require('razorpay');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ Load Environment Variables
-const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY;
-const WHATSAPP_SOURCE = process.env.WHATSAPP_SOURCE;
-const BOT_NAME = process.env.BOT_NAME || 'WhatsappCommerceAI';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const {
+  GUPSHUP_API_KEY,
+  WHATSAPP_SOURCE,
+  BOT_NAME = 'WhatsappCommerceAI',
+  OPENROUTER_API_KEY,
+  RAZORPAY_KEY_ID,
+  RAZORPAY_KEY_SECRET
+} = process.env;
 
-if (!GUPSHUP_API_KEY || !WHATSAPP_SOURCE || !OPENROUTER_API_KEY) {
+if (!GUPSHUP_API_KEY || !WHATSAPP_SOURCE || !OPENROUTER_API_KEY || !RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
   throw new Error('❌ Missing required environment variables');
 }
 
@@ -137,21 +142,19 @@ async function sendWhatsAppMessage(destination, message) {
   );
 }
 
-const Razorpay = require('razorpay');
-
-// Razorpay instance
+// ✅ Razorpay Instance
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
+  key_id: RAZORPAY_KEY_ID,
+  key_secret: RAZORPAY_KEY_SECRET
 });
 
-// API to create payment order
+// ✅ Razorpay Order Endpoint
 app.post('/api/payment/create-order', async (req, res) => {
   try {
     const { amount, currency = 'INR', receipt = `receipt_order_${Date.now()}` } = req.body;
 
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Convert to paise
+      amount: amount * 100,
       currency,
       receipt,
       payment_capture: 1
@@ -164,13 +167,7 @@ app.post('/api/payment/create-order', async (req, res) => {
   }
 });
 
-
-// ✅ Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
-// ✅ Test AI Response (Postman)
+// ✅ Test AI via Postman
 app.post('/test-ai', async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ success: false, error: 'Message is required' });
@@ -184,7 +181,7 @@ app.post('/test-ai', async (req, res) => {
   }
 });
 
-// ✅ Test Gupshup Messaging (Postman)
+// ✅ Test Gupshup Message via Postman
 app.post('/test-gupshup', async (req, res) => {
   const { phoneNumber } = req.body;
   if (!phoneNumber) return res.status(400).json({ success: false, message: 'Missing phoneNumber' });
@@ -199,17 +196,7 @@ app.post('/test-gupshup', async (req, res) => {
   }
 });
 
-const Razorpay = require("razorpay");
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY,
-  key_secret: process.env.RAZORPAY_SECRET
-});
-const response = await razorpay.paymentLink.create({
-  amount: 50000,
-  currency: "INR",
-  description: "Order for XYST product",
-  customer: { name: "Customer", contact: phoneNumber },
-  notify: { sms: false, email: false },
-  callback_url: "https://yourstore.com/payment-success",
-  callback_method: "get"
+// ✅ Start Server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
