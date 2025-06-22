@@ -137,6 +137,34 @@ async function sendWhatsAppMessage(destination, message) {
   );
 }
 
+const Razorpay = require('razorpay');
+
+// Razorpay instance
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+// API to create payment order
+app.post('/api/payment/create-order', async (req, res) => {
+  try {
+    const { amount, currency = 'INR', receipt = `receipt_order_${Date.now()}` } = req.body;
+
+    const order = await razorpay.orders.create({
+      amount: amount * 100, // Convert to paise
+      currency,
+      receipt,
+      payment_capture: 1
+    });
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('❌ Razorpay Order Error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to create payment order' });
+  }
+});
+
+
 // ✅ Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
@@ -169,4 +197,19 @@ app.post('/test-gupshup', async (req, res) => {
     console.error('❌ Gupshup Test Error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to send Gupshup test message' });
   }
+});
+
+const Razorpay = require("razorpay");
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY,
+  key_secret: process.env.RAZORPAY_SECRET
+});
+const response = await razorpay.paymentLink.create({
+  amount: 50000,
+  currency: "INR",
+  description: "Order for XYST product",
+  customer: { name: "Customer", contact: phoneNumber },
+  notify: { sms: false, email: false },
+  callback_url: "https://yourstore.com/payment-success",
+  callback_method: "get"
 });
