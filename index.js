@@ -6,52 +6,48 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Load Environment Variables
+// ✅ Load Environment Variables
 const GUPSHUP_API_KEY = process.env.GUPSHUP_API_KEY;
 const WHATSAPP_SOURCE = process.env.WHATSAPP_SOURCE;
 const BOT_NAME = process.env.BOT_NAME || 'WhatsappCommerceAI';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 if (!GUPSHUP_API_KEY || !WHATSAPP_SOURCE || !OPENROUTER_API_KEY) {
-  throw new Error('❌ Missing environment variables');
+  throw new Error('❌ Missing required environment variables');
 }
 
 app.use(express.json());
 
-// In-memory session to track conversation context
+// ✅ Track conversation sessions
 const sessions = new Map();
-
-// Format AI response for WhatsApp (within 4096 characters)
 const formatMessage = (text) => text.trim().replace(/\n{2,}/g, '\n').substring(0, 4096);
 
-// ✅ Health check endpoint
+// ✅ Health Check
 app.get('/', (req, res) => {
   res.send('✅ WhatsApp AI Backend is live');
 });
 
-// 🛒 Handle new order from frontend (on Buy via WhatsApp click)
+// ✅ Order Message Endpoint
 app.post('/api/whatsapp/order', async (req, res) => {
   try {
     const { phoneNumber, name, orderDetails } = req.body;
-
     if (!phoneNumber || !orderDetails) {
       return res.status(400).json({ success: false, message: 'Missing phoneNumber or orderDetails' });
     }
 
     const sessionId = phoneNumber;
     if (!sessions.has(sessionId)) sessions.set(sessionId, []);
-
     const conversation = sessions.get(sessionId);
-    const introMsg = `A user named ${name || "Guest"} is interested in: ${orderDetails}. Ask for their delivery address and offer payment options (UPI, COD).`;
 
+    const introMsg = `A user named ${name || "Guest"} is interested in: ${orderDetails}. Ask for their delivery address and offer payment options (UPI, COD).`;
     conversation.push({ role: 'user', content: introMsg });
 
     const aiReply = await generateAIReply(conversation);
-
     await sendWhatsAppMessage(phoneNumber, aiReply);
-    conversation.push({ role: 'assistant', content: aiReply });
 
+    conversation.push({ role: 'assistant', content: aiReply });
     console.log(`✅ Sent AI reply to ${phoneNumber}: ${aiReply.slice(0, 80)}...`);
+
     res.json({ success: true, message: 'AI message sent via WhatsApp' });
 
   } catch (error) {
@@ -60,7 +56,7 @@ app.post('/api/whatsapp/order', async (req, res) => {
   }
 });
 
-// 🔁 Webhook to handle replies from users
+// ✅ Webhook (Gupshup Reply Handler)
 app.post('/webhook', rateLimit({ windowMs: 60_000, max: 100 }), async (req, res) => {
   const payload = req.body;
 
@@ -92,9 +88,9 @@ app.post('/webhook', rateLimit({ windowMs: 60_000, max: 100 }), async (req, res)
   }
 });
 
-// 🔧 Generate AI reply from OpenRouter (Mistral/DeepSeek model)
+// ✅ AI Reply (OpenRouter - Mistral)
 async function generateAIReply(messages) {
-  const recentMessages = messages.slice(-3); // keep context short for cost
+  const recentMessages = messages.slice(-3); // Limit context
   const response = await axios.post(
     'https://openrouter.ai/api/v1/chat/completions',
     {
@@ -121,7 +117,7 @@ async function generateAIReply(messages) {
   return formatMessage(response.data.choices[0].message.content);
 }
 
-// 📤 Send message to customer via Gupshup
+// ✅ Gupshup Send Message
 async function sendWhatsAppMessage(destination, message) {
   await axios.post(
     'https://api.gupshup.io/sm/api/v1/msg',
@@ -141,36 +137,33 @@ async function sendWhatsAppMessage(destination, message) {
   );
 }
 
-// 🚀 Start server
+// ✅ Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
+// ✅ Test AI Response (Postman)
+app.post('/test-ai', async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ success: false, error: 'Message is required' });
 
-// new test 
-app.post('/test-gupshup', async (req, res) => {
   try {
-    const phoneNumber = req.body.phoneNumber;
+    const aiReply = await generateAIReply([{ role: 'user', content: message }]);
+    res.json({ success: true, aiReply });
+  } catch (err) {
+    console.error('❌ /test-ai Error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to get AI reply' });
+  }
+});
 
-    const msg = "🧪 Test message from backend. If you see this, Gupshup setup is correct.";
+// ✅ Test Gupshup Messaging (Postman)
+app.post('/test-gupshup', async (req, res) => {
+  const { phoneNumber } = req.body;
+  if (!phoneNumber) return res.status(400).json({ success: false, message: 'Missing phoneNumber' });
 
-    await axios.post(
-      'https://api.gupshup.io/sm/api/v1/msg',
-      new URLSearchParams({
-        channel: 'whatsapp',
-        source: process.env.WHATSAPP_SOURCE,
-        destination: phoneNumber,
-        message: msg,
-        'src.name': process.env.BOT_NAME || 'WhatsappCommerceOSv1'
-      }),
-      {
-        headers: {
-          apikey: process.env.GUPSHUP_API_KEY,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
-
+  try {
+    const testMessage = '🧪 Gupshup test successful!';
+    await sendWhatsAppMessage(phoneNumber, testMessage);
     res.json({ success: true, message: 'Test message sent!' });
   } catch (err) {
     console.error('❌ Gupshup Test Error:', err.message);
